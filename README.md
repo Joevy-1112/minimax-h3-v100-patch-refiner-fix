@@ -76,6 +76,7 @@ If validation fails (unknown ComfyUI source structure), the patch disables itsel
 
 ## Known limits (honest version)
 
+- **ComfyUI compatibility, checked against upstream tags**: verified end-to-end on **0.33.1**. `v0.33.1..v0.33.2` touches zero lines in `comfy/ldm/minimax/` or `comfy/supported_models.py` (upstream's own 0.33.2 target), so 0.33.2 behaves identically. **0.34.x restructures `model.py` (~163 lines changed) and the structure validation will refuse to install there** — by design; it never half-applies.
 - Verified on V100 (sm_70) only. Ampere+ has native BF16 and should not use this; Turing would likely work but is untested.
 - The 38G bf16 model exceeds 2×16G VRAM: first load pages through system RAM (~12 min with 64G RAM + 16G swap on this test box). A 32G+ card loads straight to VRAM.
 - LLM-as-judge style black-frame auditing was done by frame-statistics + visual inspection, not automated perceptual metrics.
