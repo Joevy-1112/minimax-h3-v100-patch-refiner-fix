@@ -1,6 +1,6 @@
 {
   "package": "minimax-h3-v100-patch",
-  "version": "0.1.3",
+  "version": "0.1.3+refinerfix.2",
   "profile_id": "minimax-h3-v100-v013-native-fp16-branches",
   "default_delivery": "standalone ComfyUI Custom Node runtime extension",
   "profile": "native FP16 storage and attention/MLP branches; FP32 residual, audio recomputation, modulation, Token Refiner and final heads",
