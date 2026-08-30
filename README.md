@@ -46,7 +46,7 @@ Numeric audit across 50 DiT blocks: 0 NaN / 0 Inf; largest FP16 tensor 8,744 (li
 
 Same as upstream v0.1.3, plus:
 
-- ComfyUI 0.33.1+ (upstream README targets 0.33.2; structure validation auto-refuses unknown source layouts)
+- ComfyUI 0.33.1 / 0.33.2 / **0.34.2** (structure validation auto-refuses only unrecognized source layouts)
 - torch 2.8.0+cu126 (sm_70 window; cu128+ drops Volta)
 - bf16 H3 DiT weights (`minimax_h3_fl2va_pruned_bf16.safetensors`, ~38G). The patch registers FP16 as an inference dtype, so the loader casts bf16 storage to FP16 natively — no quantization, no kitchen backend.
 - A dedicated ComfyUI instance for FP16 experiments (the patch must not coexist with INT8/quantized production workflows in the same process)
@@ -76,7 +76,7 @@ If validation fails (unknown ComfyUI source structure), the patch disables itsel
 
 ## Known limits (honest version)
 
-- **ComfyUI compatibility, checked against upstream tags**: verified end-to-end on **0.33.1**. `v0.33.1..v0.33.2` touches zero lines in `comfy/ldm/minimax/` or `comfy/supported_models.py` (upstream's own 0.33.2 target), so 0.33.2 behaves identically. **0.34.x restructures `model.py` (~163 lines changed) and the structure validation will refuse to install there** — by design; it never half-applies.
+- **ComfyUI compatibility, checked against upstream tags**: verified end-to-end on **0.33.1**, **0.33.2**, and **0.34.2**. `v0.33.1..v0.33.2` touches zero lines in `comfy/ldm/minimax/` or `comfy/supported_models.py`, so 0.33.2 behaves identically. `v0.33.2..v0.34.2` changes `comfy/ldm/minimax/model.py` (~163 lines) — the patch anchors (Attention/MLP/DiTBlock/RefinerBlock/FinalLayer forwards, `_mod_scale_shift`/`_mod_gate`) are all intact, and the only signature change (#15375) adds `denoise_mask`/`audio_denoise_mask` to `MiniMaxH3Model.forward`/`_forward`, which this version detects and forwards (0.34.2) or passes through `**kwargs` (0.33.x). The structure validation auto-refuses any layout it does not recognize — by design, it never half-applies.
 - Verified on V100 (sm_70) only. Ampere+ has native BF16 and should not use this; Turing would likely work but is untested.
 - The 38G bf16 model exceeds 2×16G VRAM: first load pages through system RAM (~12 min with 64G RAM + 16G swap on this test box). A 32G+ card loads straight to VRAM.
 - LLM-as-judge style black-frame auditing was done by frame-statistics + visual inspection, not automated perceptual metrics.

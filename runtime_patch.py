@@ -61,6 +61,7 @@ _ORIGINAL_MODEL_INIT = None
 _ORIGINAL_MODEL_FORWARD = None
 _ORIGINAL_LAYOUT_INIT = None
 _ORIGINAL_REFINER_BLOCK_FORWARD = None
+_ORIGINAL_FORWARD_HAS_DENOISE_MASK = False
 _WARNED: set[str] = set()
 
 
@@ -176,6 +177,18 @@ def _validate_runtime_shape() -> tuple[bool, str]:
         return False, "unsupported MiniMaxH3Model.__init__ signature"
     if not _signature_has(model_forward, ("self", "x", "context", "transformer_options", "minimax_payload")):
         return False, "unsupported MiniMaxH3Model._forward signature"
+    # ComfyUI 0.34.2 (#15375) added per-token video/audio denoise masks as named
+    # parameters; 0.33.x has neither and forwards via **kwargs instead. Accept
+    # either shape so the validator never refuses a valid H3 forward.
+    _fwd_params = inspect.signature(model_forward).parameters
+    if not (
+        _signature_has(model_forward, ("denoise_mask", "audio_denoise_mask"))
+        or any(p.kind == inspect.Parameter.VAR_KEYWORD for p in _fwd_params.values())
+    ):
+        return False, "unsupported MiniMaxH3Model._forward signature (no denoise_mask passthrough)"
+    # PackedLayout.__init__ dropped the optional frame_count param in 0.34.2; our
+    # patched wrapper passes *args/**kwargs straight through, so just pin the core
+    # shape params that are present in both 0.33.x and 0.34.2.
     if not _signature_has(layout_init, ("self", "text_len", "latent_t", "audio_t")):
         return False, "unsupported PackedLayout.__init__ signature"
 
@@ -227,7 +240,7 @@ def _validate_runtime_shape() -> tuple[bool, str]:
     if torch.bfloat16 not in current_dtypes or torch.float32 not in current_dtypes:
         return False, "unsupported MiniMaxH3 inference-dtype declaration"
 
-    return True, "supported ComfyUI 0.33.2 MiniMax H3 structure"
+    return True, "supported ComfyUI 0.33.x/0.34.2 MiniMax H3 structure"
 
 
 def _ranges_from_layout(layout: Any) -> tuple[tuple[int, int], ...]:
@@ -275,12 +288,21 @@ def _patched_model_forward(
     context,
     transformer_options={},
     minimax_payload=None,
+    denoise_mask=None,
+    audio_denoise_mask=None,
     **kwargs,
 ):
     payload = minimax_payload or {}
     layout = payload.get("layout") if hasattr(payload, "get") else None
     ranges_token = _AUDIO_RANGES.set(_ranges_from_layout(layout))
     capture_token = _CAPTURE_LAYOUT.set(layout is None)
+    # 0.34.2 (#15375) passes per-token video/audio denoise masks into the forward;
+    # forward them only when the underlying _forward actually declares them, so
+    # 0.33.x (no such params) stays unaffected. Other kwargs pass straight through.
+    forward_kwargs = dict(kwargs)
+    if _ORIGINAL_FORWARD_HAS_DENOISE_MASK:
+        forward_kwargs["denoise_mask"] = denoise_mask
+        forward_kwargs["audio_denoise_mask"] = audio_denoise_mask
     try:
         result = _ORIGINAL_MODEL_FORWARD(
             self,
@@ -289,7 +311,7 @@ def _patched_model_forward(
             context,
             transformer_options=transformer_options,
             minimax_payload=minimax_payload,
-            **kwargs,
+            **forward_kwargs,
         )
     finally:
         _CAPTURE_LAYOUT.reset(capture_token)
@@ -657,6 +679,7 @@ def install_patch() -> dict[str, Any]:
     global _ORIGINAL_MODEL_INIT
     global _ORIGINAL_MODEL_FORWARD
     global _ORIGINAL_LAYOUT_INIT
+    global _ORIGINAL_FORWARD_HAS_DENOISE_MASK
 
     _ORIGINAL_SUPPORTED_DTYPES = tuple(supported_models.MiniMaxH3.supported_inference_dtypes)
     _ORIGINAL_ATTENTION_FORWARD = mm.Attention.forward
@@ -667,6 +690,9 @@ def install_patch() -> dict[str, Any]:
     _ORIGINAL_MODEL_FORWARD = mm.MiniMaxH3Model._forward
     _ORIGINAL_LAYOUT_INIT = mm.PackedLayout.__init__
     _ORIGINAL_REFINER_BLOCK_FORWARD = mm.RefinerBlock.forward
+    _ORIGINAL_FORWARD_HAS_DENOISE_MASK = _signature_has(
+        _ORIGINAL_MODEL_FORWARD, ("denoise_mask", "audio_denoise_mask")
+    )
 
     for function in (
         _patched_attention_forward,

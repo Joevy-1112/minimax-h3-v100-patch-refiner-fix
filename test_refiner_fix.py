@@ -51,5 +51,17 @@ check("trace gated by env var", "_os.environ.get(\"H3_FP16_TRACE\")" in SRC)
 check("fp16 dtype registration intact", "supported_models.MiniMaxH3.supported_inference_dtypes = [" in SRC)
 check("power-of-two scales intact", "OUT_PROJ_SCALE = 64.0" in SRC and "MLP_FC2_SCALE = 256.0" in SRC)
 
+# 7. ComfyUI 0.34.x adaptation: per-token denoise masks (#15375) flow through
+check("denoise mask global defined", "_ORIGINAL_FORWARD_HAS_DENOISE_MASK" in SRC)
+check("denoise mask global cached at install", "_ORIGINAL_FORWARD_HAS_DENOISE_MASK = _signature_has(" in SRC
+      and "_ORIGINAL_MODEL_FORWARD, (\"denoise_mask\", \"audio_denoise_mask\")" in SRC)
+check("forward accepts denoise_mask params", "denoise_mask=None," in SRC and "audio_denoise_mask=None," in SRC)
+check("forward forwards denoise masks conditionally", "forward_kwargs[\"denoise_mask\"] = denoise_mask" in SRC
+      and "forward_kwargs[\"audio_denoise_mask\"] = audio_denoise_mask" in SRC)
+check("forward falls back to **kwargs passthrough", "forward_kwargs = dict(kwargs)" in SRC)
+check("validation accepts named masks OR **kwargs", "\"denoise_mask\", \"audio_denoise_mask\"" in SRC
+      and "VAR_KEYWORD" in SRC)
+check("validation success message covers 0.34.2", "0.33.x/0.34.2" in SRC)
+
 print(f"\n{len(PASS)} passed, {len(FAIL)} failed")
 sys.exit(1 if FAIL else 0)
